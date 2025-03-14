@@ -25,6 +25,7 @@
 
 enum editorKey
 {
+    BACKSPACE = 127,
     ARROW_LEFT = 1000,
     ARROW_RIGHT,
     ARROW_UP,
@@ -100,11 +101,12 @@ int editorReadKey()
 {
     int nread;
     char c;
+    
+// error handling for read
     while ((nread = read(STDIN_FILENO, &c, 1)) != 1)
     {
         if (nread == -1 && errno != EAGAIN) die("read");
     }
-    
     
     if (c == '\x1b')
     {
@@ -113,19 +115,20 @@ int editorReadKey()
         if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
 
         if (seq[0] == '['){
-            if (seq[1] >= '0' && seq[1] <='9') {
+            if (seq[1] >= '0' && seq[1] <= '9') {
                 if (read(STDIN_FILENO, &seq[2], 1) != 1) return '\x1b';
                 if (seq[2] == '~') {
                     switch (seq[1]) {
-                        case '1' : return HOME_KEY;
-                        case '3' : return DEL_KEY;
-                        case '4' : return END_KEY;
-                        case '5' : return PAGE_UP;
-                        case '6' : return PAGE_DOWN;
-                        case '7' : return HOME_KEY;
-                        case '8' : return END_KEY;
+                        case '1': return HOME_KEY;
+                        case '3': return DEL_KEY;
+                        case '4': return END_KEY;
+                        case '5': return PAGE_UP;
+                        case '6': return PAGE_DOWN;
+                        case '7': return HOME_KEY;
+                        case '8': return END_KEY;
                     }
-                } else {
+                }
+            } else {
                 switch (seq[1]) {
                     case 'A': return ARROW_UP;
                     case 'B': return ARROW_DOWN;
@@ -133,20 +136,18 @@ int editorReadKey()
                     case 'D': return ARROW_LEFT;
                     case 'H': return HOME_KEY;
                     case 'F': return END_KEY;
+                }
+            }
+        } else if (seq[0] == 'O') {
+            switch (seq[1]) {
+                case 'H': return HOME_KEY;
+                case 'F': return END_KEY;
             }
         }
-    } else if (seq[0] == 'O') {
-        switch (seq[1]) {
-            case 'H': return HOME_KEY;
-            case 'F': return END_KEY;
-        }
-    }
-
         return '\x1b';
     } else {
         return c;
     }
-}
 }
 
 int getCursorPosition(int *rows, int *cols) 
@@ -266,6 +267,26 @@ void editorInsertChar(int c)
 
 /*** file i/o ***/
 
+char *editorRowsToString(int *buflen)
+{
+    int totlen = 0;
+    int j;
+    for(j = 0; j < E.numrows; j++) 
+        totlen += E.row[j].size + 1;
+    *buflen = totlen;
+    
+    char *buf = malloc(totlen);
+    char *p = buf;
+    for (j = 0; j < E.numrows; j++) {
+        memcpy(p, E.row[j].chars, E.row[j].size);
+        p += E.row[j].size;
+        *p = '\n';
+        p++;
+    
+    }
+    return buf;
+}
+
 void editorOpen(char *filename) {
     free(E.filename);
     E.filename = strdup(filename);
@@ -276,7 +297,7 @@ void editorOpen(char *filename) {
     char *line = NULL;
     size_t linecap = 0;
     ssize_t linelen;
-    linelen = getline(&line, &linecap, fp);
+
     while ((linelen = getline(&line, &linecap, fp)) != -1) {
         while (linelen > 0 && (line[linelen - 1] == '\n' || line[linelen - 1] == '\r')) linelen--;
     
@@ -338,12 +359,12 @@ int editorMoveCursor(int key)
             }
             break;
         case ARROW_RIGHT:
-        if (row && E.cx < row->size) {    
-            E.cx++;
-        } else if ( row && E.cx == row->size) {
-            E.cy++;
-            E.cx = 0;
-        }
+            if (row && E.cx < row->size) {    
+                E.cx++;
+            } else if (row && E.cx == row->size) {
+                E.cy++;
+                E.cx = 0;
+            }
             break;
     }
 
@@ -360,6 +381,9 @@ void editorProcessKeypress()
 
     switch (c)
     {
+        case '\r':
+        /* TODO */
+        break;
         case CTRL_KEY('q'):
             write(STDOUT_FILENO, "\x1b[2J", 4);
             write(STDOUT_FILENO, "\x1b[H", 3);
@@ -374,6 +398,12 @@ void editorProcessKeypress()
             if (E.cy < E.numrows) E.cx = E.row[E.cy].size; 
             break;
 
+
+        case BACKSPACE:
+        case CTRL_KEY('h'):
+        case DEL_KEY:
+         /* TODO */
+         break;
         case PAGE_UP:
         case PAGE_DOWN:
             {
@@ -395,9 +425,17 @@ void editorProcessKeypress()
         case ARROW_DOWN:
         case ARROW_LEFT:
         case ARROW_RIGHT:
-                editorMoveCursor(c);
-                break;
+          editorMoveCursor(c);
+            break;
 
+        case CTRL_KEY('l'):
+        case '\x1b':
+            break;
+
+
+        default:
+        editorInsertChar(c);
+        break;
     }
 }
 
